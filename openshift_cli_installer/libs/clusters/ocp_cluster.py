@@ -26,9 +26,6 @@ from ocp_utilities.utils import run_command
 from simple_logger.logger import get_logger
 
 from openshift_cli_installer.libs.user_input import UserInput
-from openshift_cli_installer.utils.cli_utils import (
-    change_home_environment_on_openshift_ci,
-)
 from openshift_cli_installer.utils.cluster_versions import (
     get_cluster_stream,
     get_split_version,
