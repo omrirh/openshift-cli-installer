@@ -30,21 +30,6 @@ def get_ocm_client(ocm_token, ocm_env):
     ).client
 
 
-@contextlib.contextmanager
-def get_kubeadmin_token(cluster_dir, api_url):
-    with open(os.path.join(cluster_dir, "auth", "kubeadmin-password")) as fd:
-        kubeadmin_password = fd.read()
-    run_command(
-        command=shlex.split(f"oc login --insecure-skip-tls-verify=true {api_url} -u kubeadmin -p {kubeadmin_password}"),
-        hide_log_command=True,
-    )
-    yield run_command(
-        command=shlex.split("oc whoami -t"),
-        hide_log_command=True,
-    )[1].strip()
-    run_command(command=shlex.split("oc logout"))
-
-
 def clusters_from_directories(directories):
     clusters_data_list = []
     for directory in directories:
