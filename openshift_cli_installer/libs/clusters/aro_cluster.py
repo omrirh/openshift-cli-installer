@@ -1,5 +1,12 @@
-from clouds.azure.azure_utils import *
-from clouds.azure.session_clients import *
+from clouds.azure.azure_utils import random_resource_postfix, get_aro_supported_versions
+from clouds.azure.session_clients import (
+    get_subscription_id,
+    get_azure_credentials,
+    get_aro_client,
+    get_network_client,
+    get_resource_client,
+)
+from openshift_cli_installer.utils.general import get_pull_secret
 
 
 class AroCluster(OcpCluster):
@@ -9,154 +16,131 @@ class AroCluster(OcpCluster):
         super().__init__(**kwargs)
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
 
-        # Init azure clients
+        # Init Azure clients
         azure_credentials = get_azure_credentials()
+        self.subscription_id = get_subscription_id()
         self.aro_client = get_aro_client(credential=azure_credentials)
         self.network_client = get_network_client(credential=azure_credentials)
         self.resource_client = get_resource_client(credential=azure_credentials)
 
-        # Get resource geo-location
+        # Set cluster parameters
         self.region = kwargs.get("region", "eastus")
+        self.version = kwargs.get("version")
+        self.cluster_name = kwargs.get("cluster-name", f"msi-aro-{random_resource_postfix()}")
+        self.domain = kwargs.get("domain", self.cluster_name)
+        self.resource_group_name = kwargs.get("resource-group-name", f"aro-rg-{random_resource_postfix()}")
+        self.cluster_resource_group_name = kwargs.get("cluster-resource-group-name", f"{self.cluster_name}-rg")
+        self.virtual_network_name = kwargs.get("virtual-network-name", f"aro-vnet-{random_resource_postfix()}")
+        self.workers_subnet_name = kwargs.get("workers-subnet-name", f"workers-subnet-{random_resource_postfix()}")
+        self.master_subnet_name = kwargs.get("master-subnet-name", f"master-subnet-{random_resource_postfix()}")
+        self.master_vm_size = kwargs.get("master-vm-size", "Standard_D8s_v3"),
+        self.worker_vm_size = kwargs.get("workers-vm-size", "Standard_D4s_v3"),
+        self.workers_count = kwargs.get("workers-count", 3),
+        self.workers_disk_size = kwargs.get("workers-disk-size", 128),
+        self.network_pod_cidr = kwargs.get("network-pod-cidr", "10.128.0.0/14")
+        self.network_service_cidr = kwargs.get("network-service-cidr", "172.30.0.0/16")
+        self.fips = kwargs.get("fips", False),
+        # self.timeout = kwargs.get("timeout", CLUSTER_TIMEOUT_MIN)
 
-        # Create resource group
-        resource_group_name = f"aro-rg-{random_resource_postfix()}"
-        print(f"Creating resource group {resource_group_name}")
-        resource_client.resource_groups.create_or_update(
-            resource_group_name=resource_group_name, parameters={"location": region}
-        )
+        if pull_secret_file := kwargs.get("pull-secret-file"):
+            self.pull_secret = get_pull_secret(pull_secret_file=pull_secret_file)
 
-        # Create virtual network
-        vnet_address_prefix = "10.0.0.0/16"
-        virtual_network_name = f"aro-vnet-{random_resource_postfix()}"
-        print(f"Creating virtual network {virtual_network_name}")
-        network_client.virtual_networks.begin_create_or_update(
-            virtual_network_name=virtual_network_name,
-            resource_group_name=resource_group_name,
-            parameters={"location": region, "address_space": {"address_prefixes": [vnet_address_prefix]}},
+        self.__assert_cluster_params_are_valid()
+        self._prepare_cluster_resources()
+
+
+    def __assert_cluster_params_are_valid(self):
+        # TODO: Add more cluster params validation
+        assert self.version in get_aro_supported_versions(aro_client=self.aro_client, region=self.region)
+
+    def __prepare_cluster_resources(self):
+        self.__create_resource_group(resource_group_name=self.resource_group_name)
+        self.__create_resource_group(resource_group_name=self.cluster_resource_group_name)
+        self.__create_virtual_network()
+
+    def __destroy_cluster_resources(self):
+        self.__delete_virtual_network()
+        self.__delete_resource_group(resource_group_name=self.cluster_resource_group_name)
+        self.__delete_resource_group(resource_group_name=self.resource_group_name)
+
+    def __create_resource_group(self, resource_group_name=None):
+        self.logger.info(f"Creating resource group {resource_group_name}")
+        resource_group_create = self.resource_client.resource_groups.create_or_update(
+            resource_group_name=resource_group_name, parameters={"location": self.region}
         ).result()
 
-        # Create virtual network master+worker subnets
-        workers_subnet_name = f"workers-subnet-{random_resource_postfix()}"
-        master_subnet_name = f"master-subnet-{random_resource_postfix()}"
+        return resource_group_create
 
-        print(f"Creating workers subnet {workers_subnet_name}")
-        network_client.subnets.begin_create_or_update(
-            resource_group_name=resource_group_name,
-            virtual_network_name=virtual_network_name,
-            subnet_name=workers_subnet_name,
+    def __delete_resource_group(self, resource_group_name=None):
+        self.logger.info(f"Deleting resource group {resource_group_name}")
+        resource_group_delete = self.resource_client.resource_groups.begin_delete(
+            resource_group_name=resource_group_name
+        ).result()
+
+        return resource_group_delete
+
+    def __create_virtual_network(self, vnet_address_prefix="10.0.0.0/16"):
+        self.logger.info(f"Creating virtual network {self.virtual_network_name}")
+        vnet_create = self.network_client.virtual_networks.begin_create_or_update(
+            virtual_network_name=self.virtual_network_name,
+            resource_group_name=self.resource_group_name,
+            parameters={"location": self.region, "address_space": {"address_prefixes": [vnet_address_prefix]}},
+        ).result()
+
+        self.logger.info(f"Creating master nodes subnet {self.master_subnet_name}")
+        self.network_client.subnets.begin_create_or_update(
+            resource_group_name=self.resource_group_name,
+            virtual_network_name=self.virtual_network_name,
+            subnet_name=self.master_subnet_name,
             subnet_parameters={"properties": {"addressPrefix": vnet_address_prefix}},
-        ).result()
+        )
 
-        print(f"Creating workers subnet {master_subnet_name}")
-        network_client.subnets.begin_create_or_update(
-            resource_group_name=resource_group_name,
-            virtual_network_name=virtual_network_name,
-            subnet_name=workers_subnet_name,
+        self.logger.info(f"Creating worker nodes subnet {self.workers_subnet_name}")
+        self.network_client.subnets.begin_create_or_update(
+            resource_group_name=self.resource_group_name,
+            virtual_network_name=self.virtual_network_name,
+            subnet_name=self.workers_subnet_name,
             subnet_parameters={"properties": {"addressPrefix": vnet_address_prefix}},
+        )
+
+        return vnet_create
+
+    def __delete_virtual_network(self):
+        self.logger.info(f"Deleting virtual network {self.virtual_network_name}")
+        vnet_delete = self.network_client.virtual_networks.begin_delete(
+            virtual_network_name=self.virtual_network_name,
+            resource_group_name=self.resource_group_name,
         ).result()
 
-        # create test aro cluster
-        aro_cluster_name = f"msi-aro-{random_resource_postfix()}"
-        print(f"Creating ARO cluster {aro_cluster_name}")
-        aro_cluster = create_aro_cluster(
-            aro_client=aro_client,
-            resource_client=resource_client,
-            region=region,
-            domain=aro_cluster_name,
-            resource_group_name=resource_group_name,
-            virtual_network_name=virtual_network_name,
-            cluster_name=aro_cluster_name,
-            cluster_version="4.13.23",
-            pull_secret=get_pull_secret(),
-            master_subnet_name=master_subnet_name,
-            worker_subnet_name=workers_subnet_name,
-        )
+        return vnet_delete
 
-        import ipdb
-
-        ipdb.set_trace()
-
-        # delete test aro_cluster
-        delete_cluster_res = delete_aro_cluster(
-            aro_client=aro_client, resource_group_name=resource_group_name, cluster_name=aro_cluster_name
-        )
-
-    def create_cluster(
-        self,
-        aro_client=None,
-        resource_client=None,
-        cluster_name=None,
-        cluster_version=None,
-        resource_group_name=None,
-        pull_secret=None,
-        region=None,
-        domain=None,
-        virtual_network_name=None,
-        worker_subnet_name=None,
-        master_subnet_name=None,
-        master_vm_size="Standard_D8s_v3",
-        worker_vm_size="Standard_D4s_v3",
-        workers_count=3,
-        workers_disk_size=128,
-        fips=False,
-        timeout=CLUSTER_TIMEOUT_MIN,
-    ):
-        """
-        Args:
-            aro_client (AzureRedHatOpenShiftClient): Instance to interact with ARO resources
-            resource_client (ResourceManagementClient): Instance to interact with Azure resources
-            cluster_name (str): Target cluster name
-            cluster_version (str): Target cluster version
-            pull_secret (str): Target cluster pull-secret content
-            master_vm_size (str): Master nodes vm type (see supported types in the documentation)
-            worker_vm_size (str): Worker nodes vm type (see supported types in the documentation)
-            workers_count (int): number of worker nodes
-            workers_disk_size (int): Worker nodes disk size
-            fips (bool): FIPS configuration on target cluster
-            region (str): Target cluster location
-            timeout (int):
-            domain (str): target cluster domain
-            resource_group_name (str):
-            virtual_network_name (str):
-            worker_subnet_name (str):
-            master_subnet_name (str):
-        """
-        subscription_id = get_subscription_id()
-
-        # TODO: validate cluster params (supported region/version/worker + master vm size etc.)
-        assert cluster_version in get_aro_supported_versions(aro_client=aro_client, region=region)
-
-        # create cluster resource group
-        cluster_resource_group_name = f"{cluster_name}-rg"
-        print(f"Create cluster resource group {cluster_resource_group_name}")
-        resource_client.resource_groups.create_or_update(
-            resource_group_name=resource_group_name,
-            parameters={"location": region},
-        )
+    def create_cluster(self):
+        self.logger.info(f"Create cluster resource group {self.cluster_resource_group_name}")
+        self.__create_resource_group(resource_group_name=self.cluster_resource_group_name)
 
         # TODO: check how to handle stage/prod
         cluster_params = {
             "clusterProfile": {
-                "domain": domain,
+                "domain": self.domain,
                 "fipsValidatedModules": "Enabled" if fips else "Disabled",
-                "pullSecret": pull_secret,
-                "resourceGroupId": f"/subscriptions/{subscription_id}/resourcegroups/{cluster_resource_group_name}",
+                "pullSecret": self.pull_secret,
+                "resourceGroupId": f"/subscriptions/{self.subscription_id}/resourcegroups/{self.cluster_resource_group_name}",
                 "version": cluster_version,
             },
             "masterProfile": {
                 "encryptionAtHost": "Enabled",
-                "subnetId": f"/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft"
-                f".Network/virtualNetworks/{virtual_network_name}/subnets/{master_subnet_name}",
-                "vmSize": master_vm_size,
+                "subnetId": f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}/providers/Microsoft"
+                f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.master_subnet_name}",
+                "vmSize": self.master_vm_size,
             },
             "workerProfiles": [
                 {
-                    "count": workers_count,
-                    "diskSizeGB": workers_disk_size,
+                    "count": self.workers_count,
+                    "diskSizeGB": self.workers_disk_size,
                     "name": "worker",
-                    "subnetId": f"/subscriptions/{subscription_id}/resourceGroups/{resource_group_name}/providers/Microsoft"
-                    f".Network/virtualNetworks/{virtual_network_name}/subnets/{worker_subnet_name}",
-                    "vmSize": worker_vm_size,
+                    "subnetId": f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}/providers/Microsoft"
+                    f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.worker_subnet_name}",
+                    "vmSize": self.worker_vm_size,
                 }
             ],
             "servicePrincipalProfile": {
@@ -164,67 +148,35 @@ class AroCluster(OcpCluster):
                 "clientSecret": os.environ[azure_client_credentials_env_vars["client_secret"]],
             },
             "apiserverProfile": {"visibility": "Public"},
+            "consoleProfile": {},
+            "ingressProfiles": [{"name": "default", "visibility": "Public"}],
+            "networkProfile": {
+                "podCidr": self.network_pod_cidr,
+                "preconfiguredNSG": "Disabled",
+                "serviceCidr": self.network_service_cidr,
+            },
         }
 
-        # TODO: add option to config ingressProfiles/networkProfile/servicePrincipalProfile/tags ?
-        aro_cluster = aro_client.open_shift_clusters.begin_create_or_update(
-            resource_name=cluster_name,
-            resource_group_name=resource_group_name,
-            parameters={"location": region, "properties": cluster_params},
-        )
+        self.logger.info(f"Creating ARO cluster {cluster_name}")
+        aro_cluster_create = self.aro_client.open_shift_clusters.begin_create_or_update(
+            resource_name=self.cluster_name,
+            resource_group_name=self.resource_group_name,
+            parameters={"location": self.region, "properties": cluster_params},
+        ).result()
 
         # TODO: add timeout watcher for cluster provisioning
 
-        return aro_cluster
+        return aro_cluster_create
 
-    def destroy_cluster(
-        self,
-        aro_client=None,
-        cluster_name=None,
-        network_client=None,
-        resource_client=None,
-        resource_group_name=None,
-        virtual_network_name=None,
-    ):
-        # Delete ARO cluster
-        print(f"Deleting ARO cluster {cluster_name}")
-        aro_cluster_delete = aro_client.open_shift_clusters.begin_delete(
-            resource_group_name=resource_group_name,
-            resource_name=cluster_name,
-        )
-
-        # Delete virtual network
-        print(f"Deleting virtual network {virtual_network_name}")
-        network_client.virtual_networks.begin_delete(
-            resource_group_name=resource_group_name,
-            virtual_network_name=virtual_network_name,
+    def destroy_cluster(self):
+        self.logger.info(f"Destroying ARO cluster {cluster_name}")
+        aro_cluster_delete = self.aro_client.open_shift_clusters.begin_delete(
+            resource_group_name=self.cluster_resource_group_name,
+            resource_name=self.cluster_name,
         ).result()
 
-        # Delete resource group
-        print(f"Deleting resource group {resource_group_name}")
-        resource_client.resource_groups.begin_delete(
-            resource_group_name=resource_group_name,
-        )
+        # TODO: add timeout watcher for cluster delete
+
+        self._destroy_cluster_resources()
 
         return aro_cluster_delete
-
-    def get_aro_supported_versions(self, aro_client=None, region=None):
-        return [aro_version.version for aro_version in aro_client.open_shift_versions.list(location=region)]
-
-    def random_resource_postfix(length=4):
-        return "".join(random.choice(string.ascii_lowercase) for _ in range(length))
-
-    def get_pull_secret(ps_path="pull-secret.txt"):
-        with open(ps_path, "r") as ps_file:
-            ps_data = ps_file.read()
-            return ps_data
-
-
-def main():
-    import ipdb
-
-    ipdb.set_trace()
-
-
-if __name__ == "__main__":
-    main()
