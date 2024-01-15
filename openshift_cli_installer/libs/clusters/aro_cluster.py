@@ -1,3 +1,4 @@
+import os
 from clouds.azure.azure_utils import random_resource_postfix, get_aro_supported_versions
 from clouds.azure.session_clients import (
     get_subscription_id,
@@ -6,10 +7,12 @@ from clouds.azure.session_clients import (
     get_network_client,
     get_resource_client,
 )
+from clouds.azure.vars import azure_client_credentials_env_vars
 from openshift_cli_installer.utils.general import get_pull_secret
+from openshift_cli_installer.libs.clusters.ocp_cluster import OCPCluster
 
 
-class AroCluster(OcpCluster):
+class AROCluster(OCPCluster):
     # See Azure SDK generated samples for more info:
     # https://github.com/Azure/azure-sdk-for-python/tree/main/sdk
     def __init__(self, **kwargs):
@@ -33,13 +36,13 @@ class AroCluster(OcpCluster):
         self.virtual_network_name = kwargs.get("virtual-network-name", f"aro-vnet-{random_resource_postfix()}")
         self.workers_subnet_name = kwargs.get("workers-subnet-name", f"workers-subnet-{random_resource_postfix()}")
         self.master_subnet_name = kwargs.get("master-subnet-name", f"master-subnet-{random_resource_postfix()}")
-        self.master_vm_size = kwargs.get("master-vm-size", "Standard_D8s_v3"),
-        self.worker_vm_size = kwargs.get("workers-vm-size", "Standard_D4s_v3"),
-        self.workers_count = kwargs.get("workers-count", 3),
-        self.workers_disk_size = kwargs.get("workers-disk-size", 128),
+        self.master_vm_size = (kwargs.get("master-vm-size", "Standard_D8s_v3"),)
+        self.worker_vm_size = (kwargs.get("workers-vm-size", "Standard_D4s_v3"),)
+        self.workers_count = (kwargs.get("workers-count", 3),)
+        self.workers_disk_size = (kwargs.get("workers-disk-size", 128),)
         self.network_pod_cidr = kwargs.get("network-pod-cidr", "10.128.0.0/14")
         self.network_service_cidr = kwargs.get("network-service-cidr", "172.30.0.0/16")
-        self.fips = kwargs.get("fips", False),
+        self.fips = (kwargs.get("fips", False),)
         # self.timeout = kwargs.get("timeout", CLUSTER_TIMEOUT_MIN)
 
         if pull_secret_file := kwargs.get("pull-secret-file"):
@@ -47,7 +50,6 @@ class AroCluster(OcpCluster):
 
         self.__assert_cluster_params_are_valid()
         self._prepare_cluster_resources()
-
 
     def __assert_cluster_params_are_valid(self):
         # TODO: Add more cluster params validation
@@ -122,10 +124,10 @@ class AroCluster(OcpCluster):
         cluster_params = {
             "clusterProfile": {
                 "domain": self.domain,
-                "fipsValidatedModules": "Enabled" if fips else "Disabled",
+                "fipsValidatedModules": "Enabled" if self.fips else "Disabled",
                 "pullSecret": self.pull_secret,
                 "resourceGroupId": f"/subscriptions/{self.subscription_id}/resourcegroups/{self.cluster_resource_group_name}",
-                "version": cluster_version,
+                "version": self.version,
             },
             "masterProfile": {
                 "encryptionAtHost": "Enabled",
@@ -157,7 +159,7 @@ class AroCluster(OcpCluster):
             },
         }
 
-        self.logger.info(f"Creating ARO cluster {cluster_name}")
+        self.logger.info(f"Creating ARO cluster {self.cluster_name}")
         aro_cluster_create = self.aro_client.open_shift_clusters.begin_create_or_update(
             resource_name=self.cluster_name,
             resource_group_name=self.resource_group_name,
@@ -169,7 +171,7 @@ class AroCluster(OcpCluster):
         return aro_cluster_create
 
     def destroy_cluster(self):
-        self.logger.info(f"Destroying ARO cluster {cluster_name}")
+        self.logger.info(f"Destroying ARO cluster {self.cluster_name}")
         aro_cluster_delete = self.aro_client.open_shift_clusters.begin_delete(
             resource_group_name=self.cluster_resource_group_name,
             resource_name=self.cluster_name,
