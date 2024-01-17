@@ -141,8 +141,3 @@ def get_pull_secret_data(registry_config_file):
 def get_local_ssh_key(ssh_key_file):
     with open(ssh_key_file) as fd:
         return fd.read().strip()
-
-
-def get_pull_secret(pull_secret_file):
-    with open(pull_secret_file, "r") as ps_file:
-        return ps_file.read()

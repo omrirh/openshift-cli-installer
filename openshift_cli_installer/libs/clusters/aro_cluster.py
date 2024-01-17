@@ -8,8 +8,8 @@ from clouds.azure.session_clients import (
     get_resource_client,
 )
 from clouds.azure.vars import azure_client_credentials_env_vars
-from openshift_cli_installer.utils.general import get_pull_secret
 from openshift_cli_installer.libs.clusters.ocp_cluster import OCPCluster
+from simple_logger.logger import get_logger
 
 
 class AROCluster(OCPCluster):
@@ -26,36 +26,52 @@ class AROCluster(OCPCluster):
         self.network_client = get_network_client(credential=azure_credentials)
         self.resource_client = get_resource_client(credential=azure_credentials)
 
-        # Set cluster parameters
-        self.region = kwargs.get("region", "eastus")
-        self.version = kwargs.get("version")
-        self.cluster_name = kwargs.get("cluster-name", f"msi-aro-{random_resource_postfix()}")
-        self.domain = kwargs.get("domain", self.cluster_name)
-        self.resource_group_name = kwargs.get("resource-group-name", f"aro-rg-{random_resource_postfix()}")
-        self.cluster_resource_group_name = kwargs.get("cluster-resource-group-name", f"{self.cluster_name}-rg")
-        self.virtual_network_name = kwargs.get("virtual-network-name", f"aro-vnet-{random_resource_postfix()}")
-        self.workers_subnet_name = kwargs.get("workers-subnet-name", f"workers-subnet-{random_resource_postfix()}")
-        self.master_subnet_name = kwargs.get("master-subnet-name", f"master-subnet-{random_resource_postfix()}")
-        self.master_vm_size = (kwargs.get("master-vm-size", "Standard_D8s_v3"),)
-        self.worker_vm_size = (kwargs.get("workers-vm-size", "Standard_D4s_v3"),)
-        self.workers_count = (kwargs.get("workers-count", 3),)
-        self.workers_disk_size = (kwargs.get("workers-disk-size", 128),)
-        self.network_pod_cidr = kwargs.get("network-pod-cidr", "10.128.0.0/14")
-        self.network_service_cidr = kwargs.get("network-service-cidr", "172.30.0.0/16")
-        self.fips = (kwargs.get("fips", False),)
-        # self.timeout = kwargs.get("timeout", CLUSTER_TIMEOUT_MIN)
+        self.__set_cluster_params()
 
-        if pull_secret_file := kwargs.get("pull-secret-file"):
-            self.pull_secret = get_pull_secret(pull_secret_file=pull_secret_file)
+    def __set_cluster_params(self):
+        self.region = self.cluster_info.get("region")
+        self.version = self.cluster_info.get("version")
+        self.cluster_name = self.cluster_info.get("name", f"msi-aro-{random_resource_postfix()}")
+        self.domain = self.cluster_info.get("domain", self.cluster_name)
+        self.resource_group_name = self.cluster_info.get("resource-group-name", f"aro-rg-{random_resource_postfix()}")
+        self.cluster_resource_group_name = self.cluster_info.get(
+            "cluster-resource-group-name", f"{self.cluster_name}-rg"
+        )
+        self.virtual_network_name = self.cluster_info.get(
+            "virtual-network-name", f"aro-vnet-{random_resource_postfix()}"
+        )
+        self.workers_subnet_name = self.cluster_info.get(
+            "workers-subnet-name", f"workers-subnet-{random_resource_postfix()}"
+        )
+        self.master_subnet_name = self.cluster_info.get(
+            "master-subnet-name", f"master-subnet-{random_resource_postfix()}"
+        )
+        self.master_vm_size = self.cluster_info.get("master-vm-size", "Standard_D8s_v3")
+        self.worker_vm_size = self.cluster_info.get("workers-vm-size", "Standard_D4s_v3")
+        self.workers_count = self.cluster_info.get("workers-count", 3)
+        self.workers_disk_size = self.cluster_info.get("workers-disk-size", 128)
+        self.network_pod_cidr = self.cluster_info.get("network-pod-cidr", "10.128.0.0/14")
+        self.network_service_cidr = self.cluster_info.get("network-service-cidr", "172.30.0.0/16")
+        self.fips = self.cluster_info.get("fips", False)
+        # self.timeout = self.cluster_info.get("timeout", CLUSTER_TIMEOUT_MIN)
+
+        if pull_secret_file := self.cluster_info.get("pull-secret-file"):
+            with open(pull_secret_file, "r") as ps_file:
+                self.pull_secret = ps_file.read()
 
         self.__assert_cluster_params_are_valid()
-        self._prepare_cluster_resources()
 
     def __assert_cluster_params_are_valid(self):
         # TODO: Add more cluster params validation
-        assert self.version in get_aro_supported_versions(aro_client=self.aro_client, region=self.region)
+        def assert_is_supported_version():
+            aro_supported_versions = get_aro_supported_versions(aro_client=self.aro_client, region=self.region)
+            assert self.version in aro_supported_versions, (
+                f"Version {self.version} is not supported for ARO, supported " f"versions: {aro_supported_versions}"
+            )
 
-    def __prepare_cluster_resources(self):
+        assert_is_supported_version()
+
+    def __create_cluster_resources(self):
         self.__create_resource_group(resource_group_name=self.resource_group_name)
         self.__create_resource_group(resource_group_name=self.cluster_resource_group_name)
         self.__create_virtual_network()
@@ -69,7 +85,7 @@ class AROCluster(OCPCluster):
         self.logger.info(f"Creating resource group {resource_group_name}")
         resource_group_create = self.resource_client.resource_groups.create_or_update(
             resource_group_name=resource_group_name, parameters={"location": self.region}
-        ).result()
+        )
 
         return resource_group_create
 
@@ -77,11 +93,27 @@ class AROCluster(OCPCluster):
         self.logger.info(f"Deleting resource group {resource_group_name}")
         resource_group_delete = self.resource_client.resource_groups.begin_delete(
             resource_group_name=resource_group_name
-        ).result()
+        )
 
         return resource_group_delete
 
-    def __create_virtual_network(self, vnet_address_prefix="10.0.0.0/16"):
+    def __create_virtual_network(
+        self,
+        vnet_address_prefix="10.0.0.0/22",
+        workers_subnet_address_prefix="10.0.0.0/23",
+        master_subnet_address_prefix="10.0.2.0/23",
+    ):
+        def create_subnet(subnet_name, subnet_address_prefix):
+            self.logger.info(
+                f"Creating subnet {self.master_subnet_name} in virtual network {self.virtual_network_name}"
+            )
+            self.network_client.subnets.begin_create_or_update(
+                resource_group_name=self.resource_group_name,
+                virtual_network_name=self.virtual_network_name,
+                subnet_name=subnet_name,
+                subnet_parameters={"properties": {"addressPrefix": subnet_address_prefix}},
+            ).result()
+
         self.logger.info(f"Creating virtual network {self.virtual_network_name}")
         vnet_create = self.network_client.virtual_networks.begin_create_or_update(
             virtual_network_name=self.virtual_network_name,
@@ -89,21 +121,9 @@ class AROCluster(OCPCluster):
             parameters={"location": self.region, "address_space": {"address_prefixes": [vnet_address_prefix]}},
         ).result()
 
-        self.logger.info(f"Creating master nodes subnet {self.master_subnet_name}")
-        self.network_client.subnets.begin_create_or_update(
-            resource_group_name=self.resource_group_name,
-            virtual_network_name=self.virtual_network_name,
-            subnet_name=self.master_subnet_name,
-            subnet_parameters={"properties": {"addressPrefix": vnet_address_prefix}},
-        )
-
-        self.logger.info(f"Creating worker nodes subnet {self.workers_subnet_name}")
-        self.network_client.subnets.begin_create_or_update(
-            resource_group_name=self.resource_group_name,
-            virtual_network_name=self.virtual_network_name,
-            subnet_name=self.workers_subnet_name,
-            subnet_parameters={"properties": {"addressPrefix": vnet_address_prefix}},
-        )
+        # Create worker + master nodes subnets
+        create_subnet(subnet_name=self.master_subnet_name, subnet_address_prefix=master_subnet_address_prefix)
+        create_subnet(subnet_name=self.workers_subnet_name, subnet_address_prefix=workers_subnet_address_prefix)
 
         return vnet_create
 
@@ -117,9 +137,7 @@ class AROCluster(OCPCluster):
         return vnet_delete
 
     def create_cluster(self):
-        self.logger.info(f"Create cluster resource group {self.cluster_resource_group_name}")
-        self.__create_resource_group(resource_group_name=self.cluster_resource_group_name)
-
+        self.__create_cluster_resources()
         # TODO: check how to handle stage/prod
         cluster_params = {
             "clusterProfile": {
@@ -140,8 +158,9 @@ class AROCluster(OCPCluster):
                     "count": self.workers_count,
                     "diskSizeGB": self.workers_disk_size,
                     "name": "worker",
+                    "encryptionAtHost": "Enabled",
                     "subnetId": f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}/providers/Microsoft"
-                    f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.worker_subnet_name}",
+                    f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.workers_subnet_name}",
                     "vmSize": self.worker_vm_size,
                 }
             ],
@@ -178,7 +197,6 @@ class AROCluster(OCPCluster):
         ).result()
 
         # TODO: add timeout watcher for cluster delete
-
-        self._destroy_cluster_resources()
+        self.__destroy_cluster_resources()
 
         return aro_cluster_delete

@@ -5,10 +5,12 @@ import rosa.cli
 from clouds.aws.aws_utils import set_and_verify_aws_credentials
 from clouds.gcp.utils import get_gcp_regions
 from simple_logger.logger import get_logger
+from clouds.azure.azure_utils import get_azure_supported_regions
 
-from openshift_cli_installer.libs.clusters.ipi_cluster import AwsIpiCluster, GcpIpiCluster
+from openshift_cli_installer.libs.clusters.aws_ipi_cluster import AwsIpiCluster
 from openshift_cli_installer.libs.clusters.osd_cluster import OsdCluster
 from openshift_cli_installer.libs.clusters.rosa_cluster import RosaCluster
+from openshift_cli_installer.libs.clusters.aro_cluster import AROCluster
 from openshift_cli_installer.libs.user_input import UserInput
 from openshift_cli_installer.utils.const import (
     AWS_OSD_STR,
@@ -17,8 +19,8 @@ from openshift_cli_installer.utils.const import (
     HYPERSHIFT_STR,
     PRODUCTION_STR,
     ROSA_STR,
+    ARO_STR,
     STAGE_STR,
-    GCP_STR,
 )
 
 
@@ -28,11 +30,11 @@ class OCPClusters(UserInput):
 
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
         self.aws_ipi_clusters = []
-        self.gcp_ipi_clusters = []
         self.aws_osd_clusters = []
         self.rosa_clusters = []
         self.hypershift_clusters = []
         self.gcp_osd_clusters = []
+        self.aro_clusters = []
 
         self.s3_target_dirs = []
 
@@ -44,14 +46,12 @@ class OCPClusters(UserInput):
             self.is_region_support_hypershift()
             self.is_region_support_aws()
             self.is_region_support_gcp()
+            self.is_region_support_azure()
 
     def add_to_cluster_lists(self, ocp_cluster, **kwargs):
         _cluster_platform = ocp_cluster["platform"]
         if _cluster_platform == AWS_STR:
             self.aws_ipi_clusters.append(AwsIpiCluster(ocp_cluster=ocp_cluster, **kwargs))
-
-        if _cluster_platform == GCP_STR:
-            self.gcp_ipi_clusters.append(GcpIpiCluster(ocp_cluster=ocp_cluster, **kwargs))
 
         if _cluster_platform == AWS_OSD_STR:
             self.aws_osd_clusters.append(OsdCluster(ocp_cluster=ocp_cluster, **kwargs))
@@ -65,6 +65,9 @@ class OCPClusters(UserInput):
         if _cluster_platform == GCP_OSD_STR:
             self.gcp_osd_clusters.append(OsdCluster(ocp_cluster=ocp_cluster, **kwargs))
 
+        if _cluster_platform == ARO_STR:
+            self.aro_clusters.append(AROCluster(ocp_cluster=ocp_cluster, **kwargs))
+
     @property
     def list_clusters(self):
         return (
@@ -73,7 +76,7 @@ class OCPClusters(UserInput):
             + self.rosa_clusters
             + self.hypershift_clusters
             + self.gcp_osd_clusters
-            + self.gcp_ipi_clusters
+            + self.aro_clusters
         )
 
     @property
@@ -143,17 +146,31 @@ class OCPClusters(UserInput):
                 set_and_verify_aws_credentials(region_name=_region)
 
     def is_region_support_gcp(self):
-        if _clusters := self.gcp_ipi_clusters + self.gcp_osd_clusters:
-            self.logger.info(f"Check if regions are {GCP_STR}-supported.")
+        if self.gcp_osd_clusters:
+            self.logger.info("Check if regions are GCP-supported.")
             supported_regions = get_gcp_regions(gcp_service_account_file=self.gcp_service_account_file)
             unsupported_regions = []
-            for _cluster in _clusters:
+            for _cluster in self.gcp_osd_clusters:
                 cluster_region = _cluster.cluster_info["region"]
                 if cluster_region not in supported_regions:
                     unsupported_regions.append(f"cluster: {_cluster.cluster_info['name']}, region: {cluster_region}")
 
             if unsupported_regions:
-                self.logger.error("The following clusters regions are not supported in GCP: {unsupported_regions}")
+                self.logger.error(f"The following clusters regions are not supported in GCP: {unsupported_regions}")
+                raise click.Abort()
+
+    def is_region_support_azure(self):
+        if self.aro_clusters:
+            self.logger.info("Check if regions aro AZURE-supported.")
+            supported_regions = get_azure_supported_regions()
+            unsupported_regions = []
+            for _cluster in self.aro_clusters:
+                cluster_region = _cluster.cluster_info["region"]
+                if cluster_region not in supported_regions:
+                    unsupported_regions.append(f"cluster: {_cluster.cluster_info['name']}, region: {cluster_region}")
+
+            if unsupported_regions:
+                self.logger.error(f"The following clusters regions are not supported in Azure: {unsupported_regions}")
                 raise click.Abort()
 
     def run_create_or_destroy_clusters(self):
@@ -163,7 +180,7 @@ class OCPClusters(UserInput):
         with ThreadPoolExecutor() as executor:
             for cluster in self.list_clusters:
                 action_func = getattr(cluster, action_str)
-                self.logger.info(
+                click.echo(
                     f"Executing {self.action} cluster {cluster.cluster_info['name']} [parallel: {self.parallel}]"
                 )
                 if self.parallel:
