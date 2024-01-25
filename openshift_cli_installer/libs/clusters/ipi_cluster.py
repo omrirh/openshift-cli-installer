@@ -198,7 +198,7 @@ class GcpIpiCluster(IpiCluster):
         super().__init__(**kwargs)
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
         self.platform = GCP_STR
-        self.gcp_service_account_file = kwargs["ocp_cluster"]["gcp_service_account_file"]
+        self.gcp_service_account_file = kwargs["ocp_cluster"]["gcp-service-account-file"]
         self.gcp_project_id = get_dict_from_json(gcp_service_account_file=self.gcp_service_account_file)["project_id"]
         if not kwargs.get("destroy_from_s3_bucket_or_local_directory"):
             self._prepare_ipi_cluster()

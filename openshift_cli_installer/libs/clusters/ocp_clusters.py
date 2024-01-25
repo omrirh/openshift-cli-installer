@@ -7,7 +7,7 @@ from clouds.gcp.utils import get_gcp_regions
 from simple_logger.logger import get_logger
 from clouds.azure.azure_utils import get_azure_supported_regions
 
-from openshift_cli_installer.libs.clusters.aws_ipi_cluster import AwsIpiCluster
+from openshift_cli_installer.libs.clusters.ipi_cluster import AwsIpiCluster, GcpIpiCluster
 from openshift_cli_installer.libs.clusters.osd_cluster import OsdCluster
 from openshift_cli_installer.libs.clusters.rosa_cluster import RosaCluster
 from openshift_cli_installer.libs.clusters.aro_cluster import AROCluster
@@ -21,6 +21,7 @@ from openshift_cli_installer.utils.const import (
     ROSA_STR,
     ARO_STR,
     STAGE_STR,
+    GCP_STR,
 )
 
 
@@ -30,6 +31,7 @@ class OCPClusters(UserInput):
 
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
         self.aws_ipi_clusters = []
+        self.gcp_ipi_clusters = []
         self.aws_osd_clusters = []
         self.rosa_clusters = []
         self.hypershift_clusters = []
@@ -52,6 +54,9 @@ class OCPClusters(UserInput):
         _cluster_platform = ocp_cluster["platform"]
         if _cluster_platform == AWS_STR:
             self.aws_ipi_clusters.append(AwsIpiCluster(ocp_cluster=ocp_cluster, **kwargs))
+
+        if _cluster_platform == GCP_STR:
+            self.gcp_ipi_clusters.append(GcpIpiCluster(ocp_cluster=ocp_cluster, **kwargs))
 
         if _cluster_platform == AWS_OSD_STR:
             self.aws_osd_clusters.append(OsdCluster(ocp_cluster=ocp_cluster, **kwargs))
@@ -76,6 +81,7 @@ class OCPClusters(UserInput):
             + self.rosa_clusters
             + self.hypershift_clusters
             + self.gcp_osd_clusters
+            + self.gcp_ipi_clusters
             + self.aro_clusters
         )
 
@@ -146,11 +152,11 @@ class OCPClusters(UserInput):
                 set_and_verify_aws_credentials(region_name=_region)
 
     def is_region_support_gcp(self):
-        if self.gcp_osd_clusters:
-            self.logger.info("Check if regions are GCP-supported.")
+        if _clusters := self.gcp_ipi_clusters + self.gcp_osd_clusters:
+            self.logger.info(f"Check if regions are {GCP_STR}-supported.")
             supported_regions = get_gcp_regions(gcp_service_account_file=self.gcp_service_account_file)
             unsupported_regions = []
-            for _cluster in self.gcp_osd_clusters:
+            for _cluster in _clusters:
                 cluster_region = _cluster.cluster_info["region"]
                 if cluster_region not in supported_regions:
                     unsupported_regions.append(f"cluster: {_cluster.cluster_info['name']}, region: {cluster_region}")
@@ -180,7 +186,7 @@ class OCPClusters(UserInput):
         with ThreadPoolExecutor() as executor:
             for cluster in self.list_clusters:
                 action_func = getattr(cluster, action_str)
-                click.echo(
+                self.logger.info(
                     f"Executing {self.action} cluster {cluster.cluster_info['name']} [parallel: {self.parallel}]"
                 )
                 if self.parallel:

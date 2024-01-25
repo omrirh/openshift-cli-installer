@@ -96,7 +96,7 @@ class UserInput:
             _cluster["aws-access-key-id"] = aws_access_key_id
             _cluster["aws-secret-access-key"] = aws_secret_access_key
             if self.gcp_service_account_file:
-                _cluster["gcp_service_account_file"] = self.gcp_service_account_file
+                _cluster["gcp-service-account-file"] = self.gcp_service_account_file
 
             for key in USER_INPUT_CLUSTER_BOOLEAN_KEYS:
                 cluster_key_value = _cluster.get(key)

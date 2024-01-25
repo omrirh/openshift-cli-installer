@@ -14,7 +14,6 @@ from clouds.aws.session_clients import s3_client
 from jinja2 import DebugUndefined, Environment, FileSystemLoader, meta
 from simple_logger.logger import get_logger
 
-from openshift_cli_installer.utils.const import ERROR_LOG_COLOR
 
 LOGGER = get_logger(name=__name__)
 
@@ -64,7 +63,7 @@ def zip_and_upload_to_s3(install_dir, s3_bucket_name, uuid, s3_bucket_path=None)
 
     zip_file = shutil.make_archive(base_name=_base_name, format="zip", root_dir=install_dir)
     bucket_key = os.path.join(s3_bucket_path or "", os.path.split(zip_file)[-1])
-    click.echo(f"Upload {zip_file} file to S3 {s3_bucket_name}, path {bucket_key}")
+    LOGGER.info(f"Upload {zip_file} file to S3 {s3_bucket_name}, path {bucket_key}")
     s3_client().upload_file(Filename=zip_file, Bucket=s3_bucket_name, Key=bucket_key)
 
     return _base_name
@@ -112,16 +111,16 @@ def tts(ts):
         return int(ts)
 
 
-def get_install_config_j2_template(jinja_dict):
+def get_install_config_j2_template(jinja_dict, platform):
     env = Environment(
         loader=FileSystemLoader(get_manifests_path()), trim_blocks=True, lstrip_blocks=True, undefined=DebugUndefined
     )
 
-    template = env.get_template(name="install-config-template.j2")
+    template = env.get_template(name=f"{platform}-install-config-template.j2")
     rendered = template.render(jinja_dict)
     undefined_variables = meta.find_undeclared_variables(env.parse(rendered))
     if undefined_variables:
-        click.secho(f"The following variables are undefined: {undefined_variables}", fg=ERROR_LOG_COLOR)
+        LOGGER.error(f"The following variables are undefined: {undefined_variables}")
         raise click.Abort()
 
     return yaml.safe_load(rendered)
@@ -143,6 +142,11 @@ def get_pull_secret_data(registry_config_file):
 def get_local_ssh_key(ssh_key_file):
     with open(ssh_key_file) as fd:
         return fd.read().strip()
+
+
+def get_dict_from_json(gcp_service_account_file):
+    with open(gcp_service_account_file) as fd:
+        return json.loads(fd.read())
 
 
 def random_resource_postfix(length=4):
