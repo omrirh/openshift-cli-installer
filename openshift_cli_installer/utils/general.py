@@ -5,6 +5,8 @@ import shutil
 from functools import wraps
 from importlib.util import find_spec
 from time import sleep
+import random
+import string
 
 import click
 import yaml
@@ -141,3 +143,7 @@ def get_pull_secret_data(registry_config_file):
 def get_local_ssh_key(ssh_key_file):
     with open(ssh_key_file) as fd:
         return fd.read().strip()
+
+
+def random_resource_postfix(length=4):
+    return "".join(random.choice(string.ascii_lowercase) for _ in range(length))

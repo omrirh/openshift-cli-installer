@@ -1,13 +1,15 @@
 import os
-from clouds.azure.azure_utils import random_resource_postfix, get_aro_supported_versions
+from clouds.azure.azure_utils import get_aro_supported_versions
 from clouds.azure.session_clients import (
     get_subscription_id,
     get_azure_credentials,
     get_aro_client,
     get_network_client,
     get_resource_client,
+    get_authorization_client,
 )
 from clouds.azure.vars import azure_client_credentials_env_vars
+from openshift_cli_installer.utils.general import random_resource_postfix
 from openshift_cli_installer.libs.clusters.ocp_cluster import OCPCluster
 from simple_logger.logger import get_logger
 
@@ -18,17 +20,23 @@ class AROCluster(OCPCluster):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
+        self.__set_azure_authentication()
+        self.__set_cluster_params()
 
-        # Init Azure clients
+    def __set_azure_authentication(self):
         azure_credentials = get_azure_credentials()
         self.subscription_id = get_subscription_id()
+        self.tenant_id = os.environ[azure_client_credentials_env_vars["tenant_id"]]
+        self.client_id = os.environ[azure_client_credentials_env_vars["client_id"]]
+        self.client_secret = os.environ[azure_client_credentials_env_vars["client_secret"]]
+
         self.aro_client = get_aro_client(credential=azure_credentials)
         self.network_client = get_network_client(credential=azure_credentials)
         self.resource_client = get_resource_client(credential=azure_credentials)
-
-        self.__set_cluster_params()
+        self.authorization_client = get_authorization_client(credential=azure_credentials)
 
     def __set_cluster_params(self):
+        # TODO: get cluster params from cluster_data.yaml if exists
         self.region = self.cluster_info.get("region")
         self.version = self.cluster_info.get("version")
         self.cluster_name = self.cluster_info.get("name", f"msi-aro-{random_resource_postfix()}")
@@ -53,7 +61,6 @@ class AROCluster(OCPCluster):
         self.network_pod_cidr = self.cluster_info.get("network-pod-cidr", "10.128.0.0/14")
         self.network_service_cidr = self.cluster_info.get("network-service-cidr", "172.30.0.0/16")
         self.fips = self.cluster_info.get("fips", False)
-        # self.timeout = self.cluster_info.get("timeout", CLUSTER_TIMEOUT_MIN)
 
         if pull_secret_file := self.cluster_info.get("pull-secret-file"):
             with open(pull_secret_file, "r") as ps_file:
@@ -62,7 +69,6 @@ class AROCluster(OCPCluster):
         self.__assert_cluster_params_are_valid()
 
     def __assert_cluster_params_are_valid(self):
-        # TODO: Add more cluster params validation
         def assert_is_supported_version():
             aro_supported_versions = get_aro_supported_versions(aro_client=self.aro_client, region=self.region)
             assert self.version in aro_supported_versions, (
@@ -75,6 +81,7 @@ class AROCluster(OCPCluster):
         self.__create_resource_group(resource_group_name=self.resource_group_name)
         self.__create_resource_group(resource_group_name=self.cluster_resource_group_name)
         self.__create_virtual_network()
+        # TODO: write cluster resources to cluster_data.yaml
 
     def __destroy_cluster_resources(self):
         self.__delete_virtual_network()
@@ -125,6 +132,28 @@ class AROCluster(OCPCluster):
         create_subnet(subnet_name=self.master_subnet_name, subnet_address_prefix=master_subnet_address_prefix)
         create_subnet(subnet_name=self.workers_subnet_name, subnet_address_prefix=workers_subnet_address_prefix)
 
+        # # Assign client a NetworkContributor role on cluster's virtual network
+        # role_assignment_scope = f"subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}"
+        # network_contributor_role = [
+        #     role
+        #     for
+        #     role in self.authorization_client.role_definitions.list(
+        #         scope=role_assignment_scope,
+        #         filter="roleName eq '{}'".format("Network Contributor")
+        #     )
+        # ][0]
+        # response = self.authorization_client.role_assignments.create(
+        #     scope=role_assignment_scope,
+        #     role_assignment_name=network_contributor_role.id,
+        #     parameters={
+        #         "properties": {
+        #             "principalId": self.client_id,
+        #             "principalType": "ServicePrincipal",
+        #             "roleDefinitionId": f"/subscriptions/{self.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/{network_contributor_role.id}",
+        #         }
+        #     },
+        # )
+
         return vnet_create
 
     def __delete_virtual_network(self):
@@ -138,6 +167,7 @@ class AROCluster(OCPCluster):
 
     def create_cluster(self):
         self.__create_cluster_resources()
+        self.timeout_watch = self.start_time_watcher()
         # TODO: check how to handle stage/prod
         cluster_params = {
             "clusterProfile": {
@@ -165,8 +195,8 @@ class AROCluster(OCPCluster):
                 }
             ],
             "servicePrincipalProfile": {
-                "clientId": os.environ[azure_client_credentials_env_vars["client_id"]],
-                "clientSecret": os.environ[azure_client_credentials_env_vars["client_secret"]],
+                "clientId": self.client_id,
+                "clientSecret": self.client_secret,
             },
             "apiserverProfile": {"visibility": "Public"},
             "consoleProfile": {},
@@ -185,18 +215,16 @@ class AROCluster(OCPCluster):
             parameters={"location": self.region, "properties": cluster_params},
         ).result()
 
-        # TODO: add timeout watcher for cluster provisioning
-
         return aro_cluster_create
 
     def destroy_cluster(self):
+        self.timeout_watch = self.start_time_watcher()
         self.logger.info(f"Destroying ARO cluster {self.cluster_name}")
         aro_cluster_delete = self.aro_client.open_shift_clusters.begin_delete(
             resource_group_name=self.cluster_resource_group_name,
             resource_name=self.cluster_name,
         ).result()
 
-        # TODO: add timeout watcher for cluster delete
         self.__destroy_cluster_resources()
 
         return aro_cluster_delete
