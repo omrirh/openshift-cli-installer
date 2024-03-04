@@ -2,6 +2,7 @@
 kind: InstallConfig
 apiVersion: v1
 baseDomain: {{ base_domain }}
+credentialsMode: Passthrough
 compute:
 - architecture: amd64
   hyperthreading: Enabled
@@ -10,19 +11,28 @@ compute:
     aws:
       type: {{ worker_flavor|default("m5.4xlarge", true) }}
       rootVolume:
+        iops: 2000
         size: {{ worker_root_disk_size|default("128", true) }}
   replicas: {{ worker_replicas|default("3", true) }}
 controlPlane:
   architecture: amd64
   hyperthreading: Enabled
   name: master
-  platform: {}
+  platform:
+    aws:
+      rootVolume:
+        iops: 2000
+        size: 120
+        type: io1
+      type: m5.2xlarge
+      zones:
+      - us-east-1f
   replicas: 3
 metadata:
   name: {{ name }}
 networking:
   clusterNetwork:
-  - cidr: 10.128.0.0/14
+  - cidr: 192.168.0.0/20
     hostPrefix: 23
   machineNetwork:
   - cidr: 10.0.0.0/16
@@ -36,3 +46,11 @@ publish: External
 fips: {{ fips|default("false", true) }}
 sshKey: {{ ssh_key }}
 pullSecret: '{{ pull_secret }}'
+additionalTrustBundle: {{ trust_ca }}
+imageContentSources:
+- mirrors:
+  - ec2-3-86-46-236.compute-1.amazonaws.com:8443/ocp411/openshift/release-images
+  source: quay.io/openshift-release-dev/ocp-release
+- mirrors:
+  - ec2-3-86-46-236.compute-1.amazonaws.com:8443/ocp411/openshift/release
+  source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
