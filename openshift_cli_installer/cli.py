@@ -200,6 +200,15 @@ must-gather will try to collect data when cluster installation fails and cluster
     type=click.Path(exists=True),
 )
 @click.option(
+    "--trusted-ca-file",
+    help="""
+\b
+Path to trusted CA file.
+This CA certificate will be used as additionalTrustBundle for IPI air-gapped cluster.
+""",
+    type=click.Path(exists=True),
+)
+@click.option(
     "--dry-run",
     help="For testing, only verify user input",
     is_flag=True,

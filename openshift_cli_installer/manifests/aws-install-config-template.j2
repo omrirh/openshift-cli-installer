@@ -26,7 +26,7 @@ controlPlane:
         type: io1
       type: m5.2xlarge
       zones:
-      - us-east-1f
+      - {{ region }}
   replicas: 3
 metadata:
   name: {{ name }}
@@ -41,16 +41,21 @@ networking:
   - 172.30.0.0/16
 platform:
   aws:
+    hostedZone: {{ route53_hosted_zone }}
     region: {{ region }}
-publish: External
-fips: {{ fips|default("false", true) }}
+    userTags:
+      autoOff: True
+    subnets:
+    - {{ subnet_id }}
+publish: Internal
+fips: {{ fips|default("true", true) }}
 sshKey: {{ ssh_key }}
 pullSecret: '{{ pull_secret }}'
-additionalTrustBundle: {{ trust_ca }}
+additionalTrustBundle: {{ trusted_ca }}
 imageContentSources:
 - mirrors:
-  - ec2-3-86-46-236.compute-1.amazonaws.com:8443/ocp411/openshift/release-images
+  - {{ quay_host }}:8443/ocp411/openshift/release-images
   source: quay.io/openshift-release-dev/ocp-release
 - mirrors:
-  - ec2-3-86-46-236.compute-1.amazonaws.com:8443/ocp411/openshift/release
+  - {{ quay_host }}:8443/ocp411/openshift/release
   source: quay.io/openshift-release-dev/ocp-v4.0-art-dev

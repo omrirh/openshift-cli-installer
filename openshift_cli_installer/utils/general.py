@@ -144,3 +144,8 @@ def get_local_ssh_key(ssh_key_file):
 def get_dict_from_json(gcp_service_account_file):
     with open(gcp_service_account_file) as fd:
         return json.loads(fd.read())
+
+
+def get_trusted_ca_data(trusted_ca_file):
+    with open(trusted_ca_file) as fd:
+        return fd.read()  # TODO: find out if there's a trustCA python loader

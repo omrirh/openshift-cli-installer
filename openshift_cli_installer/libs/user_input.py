@@ -67,6 +67,12 @@ class UserInput:
         self.must_gather_output_dir = self.user_kwargs.get("must_gather_output_dir")
         self.create = self.action == CREATE_STR
 
+        # fields required for air-gapped install-config.yaml
+        self.route53_hosted_zone = self.user_kwargs.get("route53_hosted_zone")
+        self.subnet_id = self.user_kwargs.get("subent_id")
+        self.quay_host = self.user_kwargs.get("quay_host")
+        self.trusted_ca_file = self.user_kwargs.get("trusted_ca_file")
+
         # We need to make sure that we don't process the same input twice
         self._already_processed = "__openshift_cli_installer_user_input_processed__"
         if globals().get(self._already_processed):

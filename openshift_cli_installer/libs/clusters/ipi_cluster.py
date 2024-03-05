@@ -20,6 +20,7 @@ from openshift_cli_installer.utils.general import (
     generate_unified_pull_secret,
     get_install_config_j2_template,
     get_local_ssh_key,
+    get_trusted_ca_data,
     zip_and_upload_to_s3,
 )
 from openshift_cli_installer.utils.general import get_dict_from_json
@@ -81,6 +82,7 @@ class IpiCluster(OCPCluster):
             docker_config_file=self.docker_config_file,
         )
         self.ssh_key = get_local_ssh_key(ssh_key_file=self.ssh_key_file)
+        self.trusted_ca = get_trusted_ca_data(trusted_ca_file=self.trusted_ca_file)
 
         terraform_parameters = {
             "name": self.cluster_info["name"],
@@ -89,6 +91,10 @@ class IpiCluster(OCPCluster):
             "platform": self.cluster_info["platform"],
             "ssh_key": self.ssh_key,
             "pull_secret": self.pull_secret,
+            "trusted_ca": self.trusted_ca,
+            "quay_host": self.quay_host,
+            "subnet_id": self.subnet_id,
+            "route53_hosted_zone": self.route53_hosted_zone,
         }
 
         if worker_flavor := self.cluster.get("worker-flavor"):
