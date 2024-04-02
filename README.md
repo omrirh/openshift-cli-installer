@@ -36,7 +36,7 @@ Action also can be passed to the CLI as `--action create/destroy` instead of spe
   * `auto-region=True`: Optional cluster parameter for assigning `region` param to a region which have the least number of VPCs.
   * `--registry-config-file`: registry-config json file path, can be obtained from [openshift local cluster](https://console.redhat.com/openshift/create/local)
   * `--docker-config-file`: Path to Docker config.json file, defaults to `~/.docker/config.json`. File must include token for `registry.ci.openshift.org`
-  * `--ssh-key-file`: id_rsa file path
+  * `--ssh-key-file`: id_rsa file path, defaults to `/openshift-cli-installer/ssh-key/id_rsa.pub`
 
 * GCP IPI clusters:
   * The installer output is saved in the `<cluster directory>`.
@@ -45,6 +45,10 @@ Action also can be passed to the CLI as `--action create/destroy` instead of spe
   * `base-domain`: cluster parameter is mandatory
   * `--gcp-service-account-file`: Path to GCP service account json. The file will be copied to specific path `~/.gcp/osServiceAccount.json` for installer .
      Follow [these](#steps-to-create-gcp-service-account-file) steps to get the ServiceAccount file.
+  * `--registry-config-file`: registry-config json file path, can be obtained from [openshift local cluster](https://console.redhat.com/openshift/create/local)
+  * `--docker-config-file`: Path to Docker config.json file, defaults to `~/.docker/config.json`. File must include token for `registry.ci.openshift.org`
+  * `--ssh-key-file`: id_rsa file path, defaults to `/openshift-cli-installer/ssh-key/id_rsa.pub`
+
 
 * ROSA / Hypershift clusters:
   * `platform=rosa`: Must pass in cluster parameters
