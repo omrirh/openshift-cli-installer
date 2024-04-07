@@ -77,6 +77,18 @@ Action also can be passed to the CLI as `--action create/destroy` instead of spe
   - `--gcp-service-account-file`: Path to GCP service account json.
     Follow [these](#steps-to-create-gcp-service-account-file) steps to get the ServiceAccount file.
 
+* ARO clusters:
+  * `platform=aro`: Must pass in cluster parameters
+  * The installer output is saved in the `<cluster directory>`.
+  * The data is used for cluster destroy.
+  * Uses `--docker-config-file` as pull-secret file path.
+  * For Azure authentication:
+    * `--azure-tenant-id`: Azure service principal tenant ID
+    * `--azure-client-id`: Azure service principal client ID
+    * `--azure-client-secret`: Azure service principal client secret
+    * `--azure-subscription-id`: MSI Azure subscription ID
+    * Obtain the above credentials from the [Azure portal](https://azure.microsoft.com/en-us/get-started/azure-portal)
+
 ### Cluster parameters
 
 Every call to the openshift installer cli must have at least one `--cluster` option.
@@ -277,6 +289,22 @@ podman run quay.io/redhat_msi/openshift-cli-installer \
     --cluster 'name=hyper;platform=hypershift;region=us-west-2;version=4.13.4;compute-machine-type=m5.4xlarge;replicas=6;channel-group=candidate;expiration-time=4h;timeout=1h'
 ```
 
+##### ARO cluster
+
+###### Versions
+  * Current supported versions for ARO are 4.13.23 and 4.12.25
+
+```
+podman run quay.io/redhat_msi/openshift-cli-installer \
+    --action create \
+    --ocm-token=$OCM_TOKEN \
+    --azure-tenant-id=$AZURE_TENANT_ID \
+    --azure-client-id=$AZURE_CLIENT_ID \
+    --azure-client-secret=$AZURE_CLIENT_SECRET \
+    --azure-subscription-id=$AZURE_SUBSCRIPTION_ID \
+    --cluster 'name=aro1;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
+```
+
 ##### Multiple clusters
 
 To run multiple clusters deployments in parallel pass -p,--parallel.
@@ -324,6 +352,19 @@ podman run quay.io/redhat_msi/openshift-cli-installer \
     --action destroy \
     --ocm-token=$OCM_TOKEN \
     --cluster 'name=hyper1;platform=hypershift;region=us-east-2;version=4.13.4;timeout=1h'
+```
+
+##### ARO cluster
+
+```
+podman run quay.io/redhat_msi/openshift-cli-installer \
+    --action destroy \
+    --ocm-token=$OCM_TOKEN \
+    --azure-tenant-id=$AZURE_TENANT_ID \
+    --azure-client-id=$AZURE_CLIENT_ID \
+    --azure-client-secret=$AZURE_CLIENT_SECRET \
+    --azure-subscription-id=$AZURE_SUBSCRIPTION_ID \
+    --cluster 'name=aro1;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
 ```
 
 ##### Multiple clusters

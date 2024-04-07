@@ -5,7 +5,9 @@ import rosa.cli
 from clouds.aws.aws_utils import set_and_verify_aws_credentials
 from clouds.gcp.utils import get_gcp_regions
 from simple_logger.logger import get_logger
-from clouds.azure.azure_utils import get_azure_supported_regions
+from clouds.azure.utils import get_azure_supported_regions
+from clouds.azure.session_clients import azure_credentials
+from clouds.azure.session_clients import subscription_client
 
 from openshift_cli_installer.libs.clusters.ipi_cluster import AwsIpiCluster, GcpIpiCluster
 from openshift_cli_installer.libs.clusters.osd_cluster import OsdCluster
@@ -165,8 +167,17 @@ class OCPClusters:
 
     def is_region_support_azure(self):
         if self.aro_clusters:
-            self.logger.info(f"Check if regions aro {ARO_STR}-supported.")
-            supported_regions = get_azure_supported_regions()
+            self.logger.info(f"Check if regions are {ARO_STR}-supported.")
+            supported_regions = get_azure_supported_regions(
+                subscription_client=subscription_client(
+                    credential=azure_credentials(
+                        tenant_id=self.user_input.azure_tenant_id,
+                        client_id=self.user_input.azure_client_id,
+                        client_secret=self.user_input.azure_client_secret,
+                    ),
+                ),
+                subscription_id=self.user_input.azure_subscription_id,
+            )
             unsupported_regions = []
             for _cluster in self.aro_clusters:
                 cluster_region = _cluster.cluster_info["region"]

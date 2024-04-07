@@ -200,6 +200,38 @@ must-gather will try to collect data when cluster installation fails and cluster
     type=click.Path(exists=True),
 )
 @click.option(
+    "--azure-tenant-id",
+    help="""
+\b
+Azure's service principal tenant ID.
+""",
+    type=str,
+)
+@click.option(
+    "--azure-client-id",
+    help="""
+\b
+Azure's service principal client ID.
+""",
+    type=str,
+)
+@click.option(
+    "--azure-client-secret",
+    help="""
+\b
+Azure's service principal client secret.
+""",
+    type=str,
+)
+@click.option(
+    "--azure-subscription-id",
+    help="""
+\b
+MSI Azure subscription ID.
+""",
+    type=str,
+)
+@click.option(
     "--dry-run",
     help="For testing, only verify user input",
     is_flag=True,

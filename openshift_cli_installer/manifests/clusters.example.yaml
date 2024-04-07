@@ -144,3 +144,23 @@ clusters:
   worker-flavor: m5.4xlarge
   worker-root-disk-size: 128
   log_level: info # optional, default: "error", supported options are debug, info, warn, error
+
+# ARO cluster
+- name: msi-aro-c1
+  platform: aro
+  version: "4.13.23"
+  region: eastus
+  stream: stable
+  timeout: 1h
+  domain: msi # Domain name must contain 1 to 30 alphanumeric characters or '.', and start and end with an alphabetic character
+  resource-group-name: aro-rg
+  cluster-resource-group-name: msi-aro-c1-rg
+  virtual-network-name: aro-vnet
+  workers-subnet-name: workers-subnet
+  master-subnet-name: master-subnet
+  master-vm-size: Standard_D8s_v3
+  workers-vm-size: Standard_D4s_v3
+  workers-count: 3
+  workers-disk-size: 128
+  network-pod-cidr: "10.128.0.0/14"
+  network-service-cidr: "172.30.0.0/16"
