@@ -191,13 +191,13 @@ class AROCluster(OCPCluster):
                 "domain": self.cluster["domain"],
                 "fipsValidatedModules": "Enabled" if self.cluster["fips"] else "Disabled",
                 "pullSecret": self.pull_secret,
-                "resourceGroupId": f"/subscriptions/{self.subscription_id}/resourcegroups/{self.cluster["cluster-resource-group-name"]}",
+                "resourceGroupId": f"/subscriptions/{self.subscription_id}/resourcegroups/{self.cluster['cluster-resource-group-name']}",
                 "version": self.cluster["version"],
             },
             "masterProfile": {
                 "encryptionAtHost": "Enabled",
                 "subnetId": f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}/providers/Microsoft"
-                f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.cluster["master-subnet-name"]}",
+                f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.cluster['master-subnet-name']}",
                 "vmSize": self.cluster["master-vm-size"],
             },
             "workerProfiles": [
@@ -207,7 +207,7 @@ class AROCluster(OCPCluster):
                     "name": "worker",
                     "encryptionAtHost": "Enabled",
                     "subnetId": f"/subscriptions/{self.subscription_id}/resourceGroups/{self.resource_group_name}/providers/Microsoft"
-                    f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.cluster["workers-subnet-name"]}",
+                    f".Network/virtualNetworks/{self.virtual_network_name}/subnets/{self.cluster['workers-subnet-name']}",
                     "vmSize": self.cluster["workers-vm-size"],
                 }
             ],
