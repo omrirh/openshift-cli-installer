@@ -1,8 +1,6 @@
 rules:
-  master:
-    level: failure  # default rules are set to warning
   slave:
-    level: failure
+    level: failure  # default rules are set to warning
   blacklist:
     level: failure
   whitelist:
