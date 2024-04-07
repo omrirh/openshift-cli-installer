@@ -48,8 +48,8 @@ class OCPCluster:
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
         self.cluster = ocp_cluster
 
-        # self.s3_bucket_name = self.user_input.s3_bucket_name or self.cluster["cluster_info"].get("s3_bucket_name")
-        # self.s3_bucket_path = self.user_input.s3_bucket_path or self.cluster["cluster_info"].get("s3_bucket_path")
+        self.s3_bucket_name = self.user_input.s3_bucket_name or (self.cluster["cluster_info"].get("s3_bucket_name") if self.cluster.get("cluster_info") else None)
+        self.s3_bucket_path = self.user_input.s3_bucket_path or (self.cluster["cluster_info"].get("s3_bucket_path") if self.cluster.get("cluster_info") else None)
 
         if self.user_input.destroy_from_s3_bucket_or_local_directory:
             self.cluster_info = self.cluster["cluster_info"]
