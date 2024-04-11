@@ -71,9 +71,9 @@ class AROCluster(OCPCluster):
             aro_arg: cluster_data.pop(aro_arg, aro_val) for aro_arg, aro_val in aro_cluster_args.items()
         })
 
-        # if pull_secret_file := self.user_input.docker_config_file:
-        #     with open(pull_secret_file, "r") as ps_file:
-        #         self.pull_secret = ps_file.read()
+        if pull_secret_file := self.user_input.docker_config_file:
+            with open(pull_secret_file, "r") as ps_file:
+                self.pull_secret = ps_file.read()
 
         self.resource_group_name = self.cluster[resource_group_name_str]
         self.virtual_network_name = self.cluster[virtual_network_name_str]
