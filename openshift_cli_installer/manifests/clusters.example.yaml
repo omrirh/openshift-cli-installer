@@ -146,15 +146,15 @@ clusters:
   log_level: info # optional, default: "error", supported options are debug, info, warn, error
 
 # ARO cluster
-- name: msi-aro-c1
+- name: aro-c1
   platform: aro
   version: "4.13.23"
   region: eastus
   stream: stable
   timeout: 1h
-  domain: msi # Domain name must contain 1 to 30 alphanumeric characters or '.', and start and end with an alphabetic character
+  domain: aroc1domain
   resource-group-name: aro-rg
-  cluster-resource-group-name: msi-aro-c1-rg
+  cluster-resource-group-name: aro-c1-rg
   virtual-network-name: aro-vnet
   workers-subnet-name: workers-subnet
   master-subnet-name: master-subnet

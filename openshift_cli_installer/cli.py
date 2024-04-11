@@ -206,6 +206,7 @@ must-gather will try to collect data when cluster installation fails and cluster
 Azure's service principal tenant ID.
 """,
     type=str,
+    default=os.environ.get("AZURE_TENANT_ID"),
 )
 @click.option(
     "--azure-client-id",
@@ -214,6 +215,7 @@ Azure's service principal tenant ID.
 Azure's service principal client ID.
 """,
     type=str,
+    default=os.environ.get("AZURE_CLIENT_ID"),
 )
 @click.option(
     "--azure-client-secret",
@@ -222,14 +224,16 @@ Azure's service principal client ID.
 Azure's service principal client secret.
 """,
     type=str,
+    default=os.environ.get("AZURE_CLIENT_SECRET"),
 )
 @click.option(
     "--azure-subscription-id",
     help="""
 \b
-MSI Azure subscription ID.
+Azure subscription ID.
 """,
     type=str,
+    default=os.environ.get("AZURE_SUBSCRIPTION_ID"),
 )
 @click.option(
     "--dry-run",

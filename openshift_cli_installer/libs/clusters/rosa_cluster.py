@@ -348,6 +348,7 @@ class RosaCluster(OcmCluster):
 
         return idp_user, idp_password
 
-    def generate_hypershift_password(self):
+    @staticmethod
+    def generate_hypershift_password():
         alphabet = string.ascii_letters + string.digits
         return "".join(secrets.choice(alphabet) for _ in range(20))

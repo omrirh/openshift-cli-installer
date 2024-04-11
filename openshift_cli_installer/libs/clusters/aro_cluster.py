@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 import base64
 from clouds.azure.utils import get_aro_supported_versions
@@ -8,7 +9,7 @@ from clouds.azure.session_clients import (
     network_client,
     resource_client,
 )
-from openshift_cli_installer.utils.general import random_resource_postfix
+from openshift_cli_installer.libs.clusters.rosa_cluster import RosaCluster
 from openshift_cli_installer.libs.clusters.ocp_cluster import OCPCluster
 from simple_logger.logger import get_logger
 
@@ -19,12 +20,12 @@ class AROCluster(OCPCluster):
         self.logger = get_logger(f"{self.__class__.__module__}-{self.__class__.__name__}")
         self.set_azure_authentication()
 
-        if not self.user_input.create:
-            with open(self._cluster_data_yaml_file, "r") as fd:
+        if self.user_input.create:
+            self.set_aro_cluster_params(cluster_data=self.cluster_info)
+        else:
+            with open(self.cluster_data_yaml_file, "r") as fd:
                 cluster_data = yaml.safe_load(stream=fd)
                 self.set_aro_cluster_params(cluster_data=cluster_data["cluster"])
-        else:
-            self.set_aro_cluster_params(cluster_data=self.cluster_info)
 
     def set_azure_authentication(self):
         self.tenant_id = self.user_input.azure_tenant_id
@@ -43,13 +44,13 @@ class AROCluster(OCPCluster):
         )
 
     def set_aro_cluster_params(self, cluster_data):
-        self.cluster_name = self.get_cluster_name()
-        cluster_resources_postfix = random_resource_postfix()
+        self.cluster_name = self.cluster_info["name"]
+        cluster_resources_postfix = RosaCluster.generate_hypershift_password()
         resource_group_name_str = "resource-group-name"
         virtual_network_name_str = "virtual-network-name"
 
         aro_cluster_args = {
-            "domain": "msi",
+            "domain": None,
             resource_group_name_str: f"aro-rg-{cluster_resources_postfix}",
             "cluster-resource-group-name": f"{self.cluster_name}-rg-{cluster_resources_postfix}",
             virtual_network_name_str: f"aro-vnet-{cluster_resources_postfix}",
@@ -61,17 +62,19 @@ class AROCluster(OCPCluster):
             "workers-disk-size": 128,
             "network-pod-cidr": "10.128.0.0/14",
             "network-service-cidr": "172.30.0.0/16",
+            "vnet-address-prefix": "10.0.0.0/22",
+            "workers-subnet-address-prefix": "10.0.0.0/23",
+            "master-subnet-address-prefix": "10.0.2.0/23",
             "fips": False,
         }
-        self.cluster.update({k: cluster_data.pop(k, v) for k, v in aro_cluster_args.items()})
+        self.cluster.update({
+            aro_arg: cluster_data.pop(aro_arg, aro_val) for aro_arg, aro_val in aro_cluster_args.items()
+        })
 
-        if pull_secret_file := self.user_input.docker_config_file:
-            with open(pull_secret_file, "r") as ps_file:
-                self.pull_secret = ps_file.read()
+        # if pull_secret_file := self.user_input.docker_config_file:
+        #     with open(pull_secret_file, "r") as ps_file:
+        #         self.pull_secret = ps_file.read()
 
-        self.region = self.cluster["region"]
-        self.version = self.cluster["version"]
-        self.platform = self.cluster_info["platform"]
         self.resource_group_name = self.cluster[resource_group_name_str]
         self.virtual_network_name = self.cluster[virtual_network_name_str]
 
@@ -80,8 +83,10 @@ class AROCluster(OCPCluster):
             self.dump_aro_cluster_data_to_file()
 
     def dump_aro_cluster_data_to_file(self):
-        self.logger.info(f"Writing {self.platform} cluster {self.cluster_name} data to {self._cluster_data_yaml_file}")
-        with open(self._cluster_data_yaml_file, "r+") as fd:
+        self.logger.info(
+            f"Writing {self.cluster['platform']} cluster {self.cluster_name} data to {self.cluster_data_yaml_file}"
+        )
+        with open(self.cluster_data_yaml_file, "r+") as fd:
             _cluster_data = yaml.safe_load(fd)
             _cluster_data["cluster"].update(self.cluster)
             fd.write(yaml.dump(_cluster_data))
@@ -90,14 +95,21 @@ class AROCluster(OCPCluster):
         def assert_is_supported_version():
             aro_supported_versions = get_aro_supported_versions(
                 aro_client=self.aro_client,
-                region=self.region,
+                region=self.cluster["region"],
             )
-            assert self.version in aro_supported_versions, (
-                f"Version {self.version} is not supported for {self.platform}, supported "
+            assert self.cluster["version"] in aro_supported_versions, (
+                f"Version {self.cluster['version']} is not supported for {self.cluster['platform']}, supported "
                 f"versions: {aro_supported_versions}"
             )
 
+        def assert_is_valid_domain_name():
+            assert re.match(pattern=r"^[a-zA-Z][a-zA-Z0-9.]{0,28}[a-zA-Z0-9]$", string=self.cluster["domain"]), (
+                "Domain name must contain 1 to 30 alphanumeric characters or '.', and start and end with an "
+                "alphabetic character"
+            )
+
         assert_is_supported_version()
+        assert_is_valid_domain_name()
 
     def create_cluster_resources(self):
         self.create_resource_group()
@@ -110,19 +122,14 @@ class AROCluster(OCPCluster):
     def create_resource_group(self):
         self.logger.info(f"Creating resource group {self.resource_group_name}")
         self.resource_client.resource_groups.create_or_update(
-            resource_group_name=self.resource_group_name, parameters={"location": self.region}
+            resource_group_name=self.resource_group_name, parameters={"location": self.cluster["region"]}
         )
 
     def delete_resource_group(self):
         self.logger.info(f"Deleting resource group {self.resource_group_name}")
         self.resource_client.resource_groups.begin_delete(resource_group_name=self.resource_group_name)
 
-    def create_virtual_network(
-        self,
-        vnet_address_prefix="10.0.0.0/22",
-        workers_subnet_address_prefix="10.0.0.0/23",
-        master_subnet_address_prefix="10.0.2.0/23",
-    ):
+    def create_virtual_network(self):
         def create_subnet(subnet_name, subnet_address_prefix):
             self.logger.info(f"Creating subnet {subnet_name} in virtual network {self.virtual_network_name}")
             self.network_client.subnets.begin_create_or_update(
@@ -137,17 +144,18 @@ class AROCluster(OCPCluster):
             virtual_network_name=self.virtual_network_name,
             resource_group_name=self.resource_group_name,
             parameters={
-                "location": self.region,
-                "address_space": {"address_prefixes": [vnet_address_prefix]},
+                "location": self.cluster["region"],
+                "address_space": {"address_prefixes": [self.cluster["vnet-address-prefix"]]},
             },
         ).result()
 
-        # Create worker + master nodes subnets
         create_subnet(
-            subnet_name=self.cluster["master-subnet-name"], subnet_address_prefix=master_subnet_address_prefix
+            subnet_name=self.cluster["master-subnet-name"],
+            subnet_address_prefix=self.cluster["master-subnet-address-prefix"],
         )
         create_subnet(
-            subnet_name=self.cluster["workers-subnet-name"], subnet_address_prefix=workers_subnet_address_prefix
+            subnet_name=self.cluster["workers-subnet-name"],
+            subnet_address_prefix=self.cluster["workers-subnet-address-prefix"],
         )
 
     def delete_virtual_network(self):
@@ -158,7 +166,7 @@ class AROCluster(OCPCluster):
         ).result()
 
     def aro_cluster_kubeconfig(self):
-        self.logger.info(f"Fetching {self.platform} cluster {self.cluster_name} kubeconfig")
+        self.logger.info(f"Fetching {self.cluster['platform']} cluster {self.cluster_name} kubeconfig")
         return (
             base64.b64decode(
                 s=self.aro_client.open_shift_clusters.list_admin_credentials(
@@ -168,7 +176,7 @@ class AROCluster(OCPCluster):
         ).decode("utf-8")
 
     def aro_cluster_kubeadmin_password(self):
-        self.logger.info(f"Fetching {self.platform} cluster {self.cluster_name} kubeadmin-password")
+        self.logger.info(f"Fetching {self.cluster['platform']} cluster {self.cluster_name} kubeadmin-password")
         return self.aro_client.open_shift_clusters.list_credentials(
             resource_group_name=self.resource_group_name,
             resource_name=self.cluster_name,
@@ -184,7 +192,6 @@ class AROCluster(OCPCluster):
 
     def create_cluster(self):
         self.create_cluster_resources()
-        self.timeout_watch = self.start_time_watcher()
 
         cluster_body = {
             "clusterProfile": {
@@ -225,24 +232,34 @@ class AROCluster(OCPCluster):
             },
         }
 
-        self.logger.info(f"Creating {self.platform} cluster {self.cluster_name}")
-        self.aro_client.open_shift_clusters.begin_create_or_update(
-            resource_name=self.cluster_name,
-            resource_group_name=self.resource_group_name,
-            parameters={"location": self.region, "properties": cluster_body},
-        ).result()
+        self.logger.info(f"Creating {self.cluster['platform']} cluster {self.cluster_name}")
+
+        try:
+            self.aro_client.open_shift_clusters.begin_create_or_update(
+                resource_name=self.cluster_name,
+                resource_group_name=self.resource_group_name,
+                parameters={"location": self.cluster["region"], "properties": cluster_body},
+            ).result()
+        except Exception as ex:
+            self.logger.info(f"Failed to create {self.cluster['platform']} cluster {self.cluster_name}: {ex}")
+            self.destroy_cluster()
+            raise
+
         self.set_aro_cluster_auth()
 
-        self.logger.info(f"{self.platform} cluster {self.cluster_name} created successfully.")
+        self.logger.info(f"{self.cluster['platform']} cluster {self.cluster_name} created successfully.")
 
     def destroy_cluster(self):
-        self.timeout_watch = self.start_time_watcher()
-        self.logger.info(f"Destroying {self.platform} cluster {self.cluster_name}")
+        self.logger.info(f"Destroying {self.cluster['platform']} cluster {self.cluster_name}")
 
-        self.aro_client.open_shift_clusters.begin_delete(
-            resource_group_name=self.resource_group_name,
-            resource_name=self.cluster_name,
-        ).result()
-        self.destroy_cluster_resources()
+        try:
+            self.aro_client.open_shift_clusters.begin_delete(
+                resource_group_name=self.resource_group_name,
+                resource_name=self.cluster_name,
+            ).result()
+            self.destroy_cluster_resources()
+        except Exception as ex:
+            self.logger.info(f"Failed to delete {self.cluster['platform']} cluster {self.cluster_name}: {ex}")
+            raise
 
-        self.logger.info(f"{self.platform} cluster {self.cluster_name} destroyed successfully.")
+        self.logger.info(f"{self.cluster['platform']} cluster {self.cluster_name} destroyed successfully.")

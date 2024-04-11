@@ -98,7 +98,7 @@ class OCPCluster:
         self.log_prefix = f"[C:{self.cluster_info['name']}|P:{self.cluster_info['platform']}|R:{self.cluster_info.get('region', 'auto-region')}]"
         self.timeout = tts(ts=self.cluster.get("timeout", TIMEOUT_60MIN))
 
-        self._cluster_data_yaml_file = os.path.join(self.cluster_info["cluster-dir"], CLUSTER_DATA_YAML_FILENAME)
+        self.cluster_data_yaml_file = os.path.join(self.cluster_info["cluster-dir"], CLUSTER_DATA_YAML_FILENAME)
         if not self.user_input.destroy_from_s3_bucket_or_local_directory:
             self.dump_cluster_data_to_file()
 
@@ -220,8 +220,8 @@ class OCPCluster:
 
             _cluster_data[_key] = _val
 
-        self.logger.info(f"{self.log_prefix}: Writing cluster data to {self._cluster_data_yaml_file}")
-        with open(self._cluster_data_yaml_file, "w") as fd:
+        self.logger.info(f"{self.log_prefix}: Writing cluster data to {self.cluster_data_yaml_file}")
+        with open(self.cluster_data_yaml_file, "w") as fd:
             fd.write(yaml.dump(_cluster_data))
 
     def collect_must_gather(self):

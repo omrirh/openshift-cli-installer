@@ -79,6 +79,7 @@ Action also can be passed to the CLI as `--action create/destroy` instead of spe
 
 * ARO clusters:
   * `platform=aro`: Must pass in cluster parameters
+  * `domain` (required in cluster parameters): Domain name must contain 1 to 30 alphanumeric characters or '.', and start and end with an alphabetic character
   * The installer output is saved in the `<cluster directory>`.
   * The data is used for cluster destroy.
   * Uses `--docker-config-file` as pull-secret file path.
@@ -292,7 +293,8 @@ podman run quay.io/redhat_msi/openshift-cli-installer \
 ##### ARO cluster
 
 ###### Versions
-  * Current supported versions for ARO are 4.13.23 and 4.12.25
+  * Run `aro_client.open_shift_versions.list(location=region)` to get the current available versions for the desired `region`.
+    See more info in the following [example](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/redhatopenshift/azure-mgmt-redhatopenshift/generated_samples/open_shift_versions_list.py).
 
 ```
 podman run quay.io/redhat_msi/openshift-cli-installer \
@@ -302,7 +304,7 @@ podman run quay.io/redhat_msi/openshift-cli-installer \
     --azure-client-id=$AZURE_CLIENT_ID \
     --azure-client-secret=$AZURE_CLIENT_SECRET \
     --azure-subscription-id=$AZURE_SUBSCRIPTION_ID \
-    --cluster 'name=aro1;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
+    --cluster 'name=aro1;domain=aro1domain;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
 ```
 
 ##### Multiple clusters
@@ -364,7 +366,7 @@ podman run quay.io/redhat_msi/openshift-cli-installer \
     --azure-client-id=$AZURE_CLIENT_ID \
     --azure-client-secret=$AZURE_CLIENT_SECRET \
     --azure-subscription-id=$AZURE_SUBSCRIPTION_ID \
-    --cluster 'name=aro1;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
+    --cluster 'name=aro1;domain=aro1domain;platform=aro;region=eastus;version=4.13.23;master-vm-size=Standard_D8s_v3;workers-vm-size=Standard_D4s_v3;workers-count=4;timeout=1h'
 ```
 
 ##### Multiple clusters
