@@ -21,6 +21,7 @@
         "pytest-testconfig",
         "beautifulsoup4",
         "requests",
+        "pyhelper-utils",
         "ipdb",
         "ipython",
         "pytest",
