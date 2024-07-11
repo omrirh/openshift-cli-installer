@@ -112,7 +112,8 @@ class OCPCluster:
             self.cluster_info["auth-path"] = auth_path = os.path.join(cluster_dir, "auth")
             self.cluster_info["kubeconfig-path"] = os.path.join(auth_path, "kubeconfig")
             Path(auth_path).mkdir(parents=True, exist_ok=True)
-            self._add_s3_bucket_data()
+            if self.s3_bucket_name:
+                self._add_s3_bucket_data()
 
         self.log_prefix = (
             f"[C:{self.cluster_info['name']}|P:{self.cluster_info['platform']}|"
