@@ -52,4 +52,4 @@ repos:
     hooks:
       - id: mypy
         exclude: ^(openshift_cli_installer/tests/)
-        additional_dependencies: [types-all]
+        additional_dependencies: [types-PyYAML, types-requests]

@@ -88,3 +88,4 @@ class DictParamType(click.ParamType):
                 param,
                 ctx,
             )
+            return {}
