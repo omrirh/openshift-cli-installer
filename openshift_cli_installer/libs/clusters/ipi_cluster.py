@@ -48,6 +48,8 @@ class IpiCluster(OCPCluster):
             self.openshift_install_binary_path = ""
             self.ipi_base_available_versions: Dict[str, Dict[str, List[str]]]
             self.cluster["ocm-env"] = self.cluster_info["ocm-env"] = PRODUCTION_STR
+        if self.cluster_info["fips"]:
+            os.environ["OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION"] = "true"
 
     def _prepare_ipi_cluster(self) -> None:
         self.ipi_base_available_versions = get_ipi_cluster_versions()
@@ -64,24 +66,24 @@ class IpiCluster(OCPCluster):
             self._create_install_config_file()
 
     def _ipi_download_installer(self) -> None:
-        openshift_install_str = "openshift-install"
+        openshift_install_binary = f"openshift-install{'-fips' if self.cluster_info['fips'] else ''}"
         version_url = self.cluster_info["version-url"]
         binary_dir = os.path.join(tempfile.TemporaryDirectory().name, version_url)
-        self.openshift_install_binary_path = os.path.join(binary_dir, openshift_install_str)
+        self.openshift_install_binary_path = os.path.join(binary_dir, openshift_install_binary)
 
         with self._set_docker_config_file() as unified_pull_secret:
             rc, _, err = run_command(
                 command=shlex.split(
                     "oc adm release extract "
                     f"{version_url} "
-                    f"--command={openshift_install_str} --to={binary_dir} --registry-config={unified_pull_secret}"
+                    f"--command={openshift_install_binary} --to={binary_dir} --registry-config={unified_pull_secret}"
                 ),
                 check=False,
             )
 
             if not rc:
                 self.logger.error(
-                    f"{self.log_prefix}: Failed to get {openshift_install_str} for version {version_url}, error: {err}",
+                    f"{self.log_prefix}: Failed to get {openshift_install_binary} for version {version_url}, error: {err}",
                 )
                 raise click.Abort()
 
