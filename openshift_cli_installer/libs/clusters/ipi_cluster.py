@@ -42,15 +42,17 @@ class IpiCluster(OCPCluster):
             registry_config_file=self.user_input.registry_config_file,
             docker_config_file=self.user_input.docker_config_file,
         )
+        self.fips = self.cluster_info.get("fips")
+        if self.fips:
+            self.fips = True if self.fips.lower() == "true" else False
+            os.environ["OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION"] = "true"
+
         if self.user_input.destroy_from_s3_bucket_or_local_directory:
             self._ipi_download_installer()
         else:
             self.openshift_install_binary_path = ""
             self.ipi_base_available_versions: Dict[str, Dict[str, List[str]]]
             self.cluster["ocm-env"] = self.cluster_info["ocm-env"] = PRODUCTION_STR
-        self.fips = self.cluster_info.get("fips")
-        if self.fips:
-            os.environ["OPENSHIFT_INSTALL_SKIP_HOSTCRYPT_VALIDATION"] = "true"
 
     def _prepare_ipi_cluster(self) -> None:
         self.ipi_base_available_versions = get_ipi_cluster_versions()
