@@ -1,12 +1,15 @@
 FROM python:3.13
 
-ARG GITHUB_API_TOKEN
-
 RUN apt-get update \
-  && apt-get install -y ssh gnupg software-properties-common curl gpg wget vim \
-  && apt-get clean autoclean \
-  && apt-get autoremove --yes \
-  && rm -rf /var/lib/{apt,dpkg,cache,log}/
+  && apt-get install -y --no-install-recommends \
+     openssh-client \
+     gnupg \
+     ca-certificates \
+     curl \
+     wget \
+     vim \
+     lsb-release \
+  && rm -rf /var/lib/apt/lists/*
 
 # Install Hashicorp's APT repository for Terraform
 RUN wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
@@ -34,14 +37,11 @@ RUN chmod +x /usr/bin/kubectl \
   && curl -L https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 --output /usr/bin/regctl \
   && chmod +x /usr/bin/regctl
 
-# Install the Advanced cluster management CLI (cm)
-RUN curl -s https://api.github.com/repos/stolostron/cm-cli/releases/latest \
-  | grep "browser_download_url.*linux_amd64.tar.gz" \
-  | cut -d : -f 2,3 \
-  | tr -d \" \
-  | wget -i - \
-  && tar xvf cm_linux_amd64.tar.gz --no-same-owner \
-  && mv cm /usr/bin/cm
+# Install the Advanced Cluster Management CLI (cm) without hitting the GitHub API
+RUN wget -q https://github.com/stolostron/cm-cli/releases/latest/download/cm_linux_amd64.tar.gz -O /tmp/cm_linux_amd64.tar.gz \
+  && tar xvf /tmp/cm_linux_amd64.tar.gz --no-same-owner \
+  && mv cm /usr/bin/cm \
+  && chmod +x /usr/bin/cm
 
 COPY pyproject.toml uv.lock README.md /openshift-cli-installer/
 COPY openshift_cli_installer /openshift-cli-installer/openshift_cli_installer/
@@ -55,6 +55,7 @@ RUN mkdir clusters-install-data \
 ENV UV_PYTHON=python3.13
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_NO_SYNC=1
+ENV APP_DIR=/openshift-cli-installer
 ENV UV_CACHE_DIR=${APP_DIR}/.cache
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/bin/
