@@ -291,9 +291,8 @@ class OCPCluster:
         with open(os.path.join(auth_path, "kubeconfig"), "w") as fd:
             fd.write(yaml.dump(self.cluster_object.kubeconfig))
 
-        # Minimal fix: Hypershift clusters don't expose kubeadmin credentials via OCM.
-        # Avoid calling kubeadmin_password for hypershift to prevent:
-        # "ClusterCredentials has no attribute 'admin' at ['['received_data']']['admin']"
+        # Hypershift clusters don't expose kubeadmin credentials via OCM.
+        # Avoid calling kubeadmin_password for hypershift to prevent API errors.
         if getattr(self.cluster_object, "hypershift", False):
             self.logger.info(f"{self.log_prefix}: Hypershift cluster detected, skipping kubeadmin-password file.")
         else:
