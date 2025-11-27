@@ -43,6 +43,7 @@ from openshift_cli_installer.utils.const import (
     S3_STR,
     STAGE_STR,
     TIMEOUT_60MIN,
+    HYPERSHIFT_STR,
 )
 from pyhelper_utils.general import tts
 
@@ -293,8 +294,8 @@ class OCPCluster:
 
         # Hypershift clusters don't expose kubeadmin credentials via OCM.
         # Avoid calling kubeadmin_password for hypershift to prevent API errors.
-        if getattr(self.cluster_object, "hypershift", False):
-            self.logger.info(f"{self.log_prefix}: Hypershift cluster detected, skipping kubeadmin-password file.")
+        if self.cluster["platform"] == HYPERSHIFT_STR:
+            self.logger.info(f"{self.log_prefix}: {HYPERSHIFT_STR} cluster detected, skipping kubeadmin-password file.")
         else:
             with open(os.path.join(auth_path, "kubeadmin-password"), "w") as fd:
                 fd.write(self.cluster_object.kubeadmin_password)
