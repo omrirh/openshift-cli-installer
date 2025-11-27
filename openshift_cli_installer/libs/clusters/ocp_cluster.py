@@ -294,7 +294,7 @@ class OCPCluster:
 
         # Hypershift clusters don't expose kubeadmin credentials via OCM.
         # Avoid calling kubeadmin_password for hypershift to prevent API errors.
-        if self.cluster["platform"] == HYPERSHIFT_STR:
+        if self.cluster_info["platform"] == HYPERSHIFT_STR:
             self.logger.info(f"{self.log_prefix}: {HYPERSHIFT_STR} cluster detected, skipping kubeadmin-password file.")
         else:
             with open(os.path.join(auth_path, "kubeadmin-password"), "w") as fd:
